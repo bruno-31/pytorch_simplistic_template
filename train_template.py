@@ -69,6 +69,8 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, g
 starting_epoch, best_psnr = resume_training(ckpt_path,model,optimizer, args)
 
 # prepare metrics
+Loss = L2(boundary_ignore=0)
+metrics = {'l2':L2(), 'Psnr':PSNR()}
 
 # /// perform training ///
 print(f'Starting training on {device} trainable params {num_parameters(model)} saving @ {ckpt_path}')
@@ -97,7 +99,8 @@ for epoch in tqdm(range(starting_epoch, args.num_epochs)):
             # forward
             with torch.set_grad_enabled(phase == 'train'):
                 pred = model(lr)
-                loss = L2(pred,hr)
+                vars = {'pred':pred, 'lr':lr, 'hr':hr}
+                loss = Loss(pred,hr)
 
                 # backward + optimize only if in training phase
                 if phase == 'train':
