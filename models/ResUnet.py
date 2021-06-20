@@ -2,9 +2,10 @@ import torch.nn as nn
 import models.basicblock as B
 import numpy as np
 
+
 class ResUNet(nn.Module):
     def __init__(self, in_nc=4, out_nc=3, nc=[64, 128, 256, 512], nb=2, act_mode='R', downsample_mode='strideconv',
-                 upsample_mode='convtranspose'):
+                 upsample_mode='convtranspose', **kwargs):
         super(ResUNet, self).__init__()
 
         self.m_head = B.conv(in_nc, nc[0], bias=False, mode='C')

@@ -9,7 +9,7 @@ class L2(nn.Module):
         super().__init__()
         self.boundary_ignore = boundary_ignore
 
-    def forward(self, pred, gt, valid=None):
+    def forward(self, pred, gt):
         if self.boundary_ignore is not None:
             pred = pred[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
             gt = gt[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]

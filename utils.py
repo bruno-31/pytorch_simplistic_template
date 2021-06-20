@@ -4,23 +4,24 @@ import shutil
 import random
 import argparse
 from datetime import datetime
-
 import numpy as np
 
-def resume_training(ckpt_path, arsg, device):
+
+def resume_training(ckpt_path, args):
     """Check if experiment exists already. If yes, load arguments and starting epoch. If not create dir
     """
+    ckpt_path = os.path.join(ckpt_path, 'last.pth.tar')
     if os.path.exists(ckpt_path):
-        print(f'ckpt found @{ckpt_path}')
-        checkpoint = torch.load(ckpt_path, map_location=device)
-        args = checkpoint['args'] #use parameter old experiment
+        checkpoint = torch.load(ckpt_path)
+        best_value_criterion = checkpoint['best_value'] #use parameter old experiment
+        args = checkpoint['args']
         starting_epoch = checkpoint['epoch']
-        print(f"resuming training @ epoch {starting_epoch})")
+        print(f"Checkpoint found\nResuming training @ epoch {starting_epoch}")
     else:
-        print(f'no ckpt found @{ckpt_path}, creating directory')
-        os.makedirs(os.path.dirname(ckpt_path))
+        print(f'No existing ckpt found')
         starting_epoch = 0
-    return starting_epoch
+        best_value_criterion = -1
+    return starting_epoch, best_value_criterion, args
 
 
 def save_checkpoint(state, is_best, checkpoint):
@@ -35,14 +36,14 @@ def save_checkpoint(state, is_best, checkpoint):
     if not os.path.exists(checkpoint):
         print("Checkpoint Directory does not exist! Making directory {}".format(checkpoint))
         os.mkdir(checkpoint)
-    else:
-        print("Checkpoint Directory exists! ")
+    # else:
+    #     print("Checkpoint Directory exists! ")
     torch.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'best.pth.tar'))
 
 
-def load_checkpoint(checkpoint_path, model, optimizer=None):
+def load_checkpoint(checkpoint_path, model, optimizer=None, map_location=None):
     """Loads model parameters (state_dict) from file_path. If optimizer is provided, loads state_dict of
     optimizer assuming it is present in checkpoint.
     Args:
@@ -50,11 +51,12 @@ def load_checkpoint(checkpoint_path, model, optimizer=None):
         model: (torch.nn.Module) model for which the parameters are loaded
         optimizer: (torch.optim) optional: resume optimizer from checkpoint
     """
+    checkpoint_path = os.path.join(checkpoint_path, 'last.pth.tar')
+
     if not os.path.exists(checkpoint_path):
         raise("File doesn't exist {}".format(checkpoint_path))
-    checkpoint = torch.load(checkpoint_path, map_location=model.device)
+    checkpoint = torch.load(checkpoint_path, map_location=map_location)
     model.load_state_dict(checkpoint['state_dict'])
-
     if optimizer:
         optimizer.load_state_dict(checkpoint['optim_dict'])
 
@@ -95,3 +97,7 @@ def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+
+
+def get_lr(optimizer):
+    return optimizer.param_groups[0]['lr']
