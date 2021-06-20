@@ -9,7 +9,7 @@ from utils import resume_training,num_parameters,str2bool,save_checkpoint, gener
     show_gpu_mem, seed_worker, load_checkpoint, get_lr
 
 from metrics import PSNR,L2
-from dataloaders import dataloader
+from dataloaders import SimpleDataloader
 
 import numpy as np
 import torch
@@ -52,13 +52,13 @@ if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
 
 # prepare dataloaders dict {'train': .. 'test':}
-loaders_dict = dataloader.basicImageDataloader(args.train_path,
-                                               args.test_path,
-                                               train_batch=args.train_batch,
-                                               test_batch=args.test_batch,
-                                               worker_init_fn=seed_worker if args.deterministic else None,
-                                               generator=generator if args.deterministic else None,
-                                               num_iters=args.num_iters, num_workers=args.num_workers)
+loaders_dict = SimpleDataloader.basicImageDataloader(args.train_path,
+                                                     args.test_path,
+                                                     train_batch=args.train_batch,
+                                                     test_batch=args.test_batch,
+                                                     worker_init_fn=seed_worker if args.deterministic else None,
+                                                     generator=generator if args.deterministic else None,
+                                                     num_iters=args.num_iters, num_workers=args.num_workers)
 
 # prepare experiment's logging files and checkpoint
 experiment = args.experiment if args.experiment is not None else generate_key()
@@ -148,7 +148,7 @@ for epoch in range(starting_epoch, args.num_epochs):
             if statistics_dict[criterion] > best_value_criterion:
                 best_value_criterion = statistics_dict[criterion] ; is_best = True
 
-    # deep copy the model
+    # saving checkpoints
     if not args.test_only:
         save_checkpoint({'state_dict': model.state_dict(),'optim_dict':optimizer.state_dict(),'epoch': epoch,
                          'args': args,'best_value': best_value_criterion}, is_best, experiment_dir)
