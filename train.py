@@ -1,11 +1,12 @@
 import time
 import random
 import math
+import pprint
 from tqdm import tqdm
 import argparse
+import os
 from utils import resume_training,num_parameters,str2bool,save_checkpoint, generate_key,\
     show_gpu_mem, seed_worker, load_checkpoint, get_lr
-import os
 
 from metrics import PSNR,L2
 from dataloaders import dataloader
@@ -50,51 +51,45 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
 
-
-# prepare experiment's logging files and checkpoint
-experiment = args.experiment if args.experiment is not None else generate_key()
-# ckpt_path = os.path.join(args.logdir, experiment,'model.cpkt')
-# experiment_dir =  os.path.dirname(ckpt_path)
-experiment_dir = os.path.join(args.logdir, experiment)
-os.makedirs(experiment_dir, exist_ok=True)
-if args.tensorboard:
-    from torch.utils.tensorboard import SummaryWriter
-    writer = SummaryWriter(experiment_dir)
-starting_epoch, best_value_criterion, args = resume_training(ckpt_path=experiment_dir, args=args)
-
-# prepare dataloaders
+# prepare dataloaders dict {'train': .. 'test':}
 loaders_dict = dataloader.basicImageDataloader(args.train_path,
                                                args.test_path,
                                                train_batch=args.train_batch,
                                                test_batch=args.test_batch,
                                                worker_init_fn=seed_worker if args.deterministic else None,
                                                generator=generator if args.deterministic else None,
-                                               num_iters=args.num_iters,
-                                               num_workers=args.num_workers)
+                                               num_iters=args.num_iters, num_workers=args.num_workers)
+
+# prepare experiment's logging files and checkpoint
+experiment = args.experiment if args.experiment is not None else generate_key()
+experiment_dir = os.path.join(args.logdir, experiment)
+os.makedirs(experiment_dir, exist_ok=True)
+starting_epoch, best_value_criterion, args = resume_training(ckpt_path=experiment_dir, args=args)
+if args.tensorboard:
+    from torch.utils.tensorboard import SummaryWriter
+    writer = SummaryWriter(experiment_dir)
 
 # prepare metrics and loss criterion
 loss_fn = L2(boundary_ignore=0)
 metrics_fn = {'l2':L2(), 'Psnr':PSNR()}
-criterion = 'Psnr' # key of the reference metric for best model saving
+criterion = 'Psnr' # key reference metric for best model saving
 
-# prepare model and restore weights if experiment exists
+# prepare model and restore weights if needed
 from models.ResUnet import ResUNet as Net
-model = Net(in_nc=3,out_nc=3,nb=1,nc=[32,32,32,32], **vars(args)).to(device)
+model = Net(in_nc=3, out_nc=3, nb=1, nc=[32,32,32,32], **vars(args)).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_decay)
+if starting_epoch != 0:
+    load_checkpoint(os.path.join(experiment_dir, 'last.pth.tar'), model, optimizer)
+
+# multi gpu
 if args.n_gpu >1:
     model = torch.nn.DataParallel(model)
 
-optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_decay)
-# starting_epoch, best_value_criterion = resume_training(ckpt_path, model, optimizer) # check existing checkpoints
-if starting_epoch != 0:
-    load_checkpoint(experiment_dir,model,optimizer)
-
 # ----------------------  perform training ----------------------
 print(f'Starting training on : {device} \nTrainable params : {num_parameters(model)} \nSaving @ {experiment_dir}')
-import pprint
 pprint.pprint(vars(args))
 for epoch in range(starting_epoch, args.num_epochs):
-
     #init statistics
     is_best = False
     statistics_dict = {metric:0. for metric in metrics_fn.keys()} # initialize statistics
@@ -117,7 +112,6 @@ for epoch in range(starting_epoch, args.num_epochs):
             with torch.set_grad_enabled(phase == 'train'):
                 pred = model(lr)
                 loss = loss_fn(pred, hr)
-                vars = {'pred':pred, 'gt':hr}
 
                 # backward + optimize only if in training phase
                 if phase == 'train':
@@ -127,38 +121,37 @@ for epoch in range(starting_epoch, args.num_epochs):
                     scheduler.step()
 
             # update statistics
-            statistics_dict = {key: value + metrics_fn[key](**vars) for (key, value) in statistics_dict.items()} # update all metrics
+            vars_dict = {'pred': pred, 'gt': hr}
+            statistics_dict = {key: value + metrics_fn[key](**vars_dict) for (key, value) in statistics_dict.items()} # update all metrics
             num_iters += 1
 
-        # logging metrics
+        # average statistics
         tac = time.time()
         statistics_dict = {key: value / num_iters for (key, value) in statistics_dict.items()}
+
         # console logging
         epoch_log = f'{phase} {epoch:03d} | {(tac-tic):0.2f}s | {(tac-tic)/num_iters:0.2f}s/iter | lr:{get_lr(optimizer):0.2e}'
         epoch_log += "".join([f' | {key}:{value:0.3f}' for key,value in statistics_dict.items()]) # display all metrics
         epoch_log += f' | gpu {show_gpu_mem()[1]:0.1f} Mb' if device!=torch.device('cpu') else '' # display gpu usage
         tqdm.write(epoch_log)
+
         # tensorboard logging
         if args.tensorboard:
             [writer.add_scalar(f'{key}/{phase}', value, epoch) for (key, value) in statistics_dict.items()]
             for name,image in {'hr':hr,'lr':lr}.items():
                 grid = torchvision.utils.make_grid(hr, nrow=int(math.sqrt(image.shape[0])))
                 writer.add_image(f'{name}/{phase}', grid, epoch)
-
             writer.flush()
 
-        #saving best module according to chosed criterion
+        # saving best according to chosen criterion
         if phase == 'test':
             if statistics_dict[criterion] > best_value_criterion:
                 best_value_criterion = statistics_dict[criterion] ; is_best = True
 
     # deep copy the model
     if not args.test_only:
-        save_checkpoint({'state_dict': model.state_dict(),
-                         'optim_dict':optimizer.state_dict(),
-                         'epoch': epoch,
-                         'args': args,
-                         'best_value': best_value_criterion}, is_best, experiment_dir)
+        save_checkpoint({'state_dict': model.state_dict(),'optim_dict':optimizer.state_dict(),'epoch': epoch,
+                         'args': args,'best_value': best_value_criterion}, is_best, experiment_dir)
 
 if args.tensorboard:
     writer.close()

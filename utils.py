@@ -51,8 +51,6 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, map_location=None):
         model: (torch.nn.Module) model for which the parameters are loaded
         optimizer: (torch.optim) optional: resume optimizer from checkpoint
     """
-    checkpoint_path = os.path.join(checkpoint_path, 'last.pth.tar')
-
     if not os.path.exists(checkpoint_path):
         raise("File doesn't exist {}".format(checkpoint_path))
     checkpoint = torch.load(checkpoint_path, map_location=map_location)
