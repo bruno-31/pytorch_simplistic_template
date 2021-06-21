@@ -97,18 +97,20 @@ print(f'Device : {device} \nModel \'{args.model}\', Trainable params : {num_para
 pprint.pprint(vars(args)); print('\n')
 
 for epoch in range(starting_epoch, args.num_epochs):
-    #init statistics
-    is_best = False
-    statistics_dict = {metric:0. for metric in metrics_fn.keys()} # initialize statistics
-    tic = time.time()
 
     for phase in ['test'] if args.test_only else ['train','test']:
+
         if phase == 'train':
             model.train()  # Set model to training mode
         else:
             if epoch % args.test_ev != 0 or epoch == 0:
                 continue
             model.eval()   # Set model to evaluate mode
+            is_best = False
+
+        # init statistics
+        statistics_dict = {metric: 0. for metric in metrics_fn.keys()}  # initialize statistics
+        tic = time.time()
 
         # Iterate over data.
         num_iters = 0
