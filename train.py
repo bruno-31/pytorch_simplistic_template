@@ -32,11 +32,13 @@ parser.add_argument("--lr_decay", type=float, help="Learning rate decay (on step
 parser.add_argument("--num_epochs", type=int, help="Total number of epochs to train", default=250)
 parser.add_argument("--num_iters", type=int, help="Num iters per epoch", default=100)
 parser.add_argument("--test_ev", type=int, help="Test every x epoch", default=10)
+parser.add_argument("--test_only", type=str2bool, help="Only testing", default=False)
+# model parameters
+parser.add_argument("--model", type=str, help="The name of the experiment to be saved.", default='ResUnet')
 # misc
 parser.add_argument("--n_gpu", type=int, help="Learning rate decrease step", default=1)
 parser.add_argument("--num_workers", type=int, help="Learning rate decrease step", default=1)
 parser.add_argument("--deterministic", type=str2bool, help="Learning rate decrease step", default=False)
-parser.add_argument("--test_only", type=str2bool, help="Only testing", default=False)
 parser.add_argument("--tqdm", type=str2bool, help="tqdm", default=False)
 args = parser.parse_args()
 
@@ -77,7 +79,7 @@ else:
     raise NotImplementedError('Unknown model architecture')
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_decay)
-starting_epoch or load_checkpoint(os.path.join(experiment_dir, 'last.pth.tar'), model, optimizer) # loading weights if possible
+not starting_epoch or load_checkpoint(os.path.join(experiment_dir, 'last.pth.tar'), model, optimizer) # loading weights if possible
 
 # multi gpu
 if args.n_gpu >1:
@@ -90,9 +92,9 @@ criterion = 'Psnr' # key reference metric for best model saving
 
 # ----------------------  perform training ----------------------
 
-print(f'Device : {device} \nTrainable params : {num_parameters(model)} \nSaving @ {experiment_dir} '
+print(f'Device : {device} \nModel \'{args.model}\', Trainable params : {num_parameters(model)} \nSaving @ {experiment_dir} '
       f'\nCriterion best {best_value_criterion:0.3f} \nParameters :')
-pprint.pprint(vars(args))
+pprint.pprint(vars(args)); print('\n')
 
 for epoch in range(starting_epoch, args.num_epochs):
     #init statistics
