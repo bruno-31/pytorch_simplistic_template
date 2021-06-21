@@ -46,7 +46,7 @@ if args.deterministic:
     generator = torch.Generator(); generator.manual_seed(0)  # seed dataloaders workers
     torch.use_deterministic_algorithms(True)
 
-# prepare torch device
+# prepare torch devices
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
@@ -70,12 +70,14 @@ if args.tensorboard:
     writer = SummaryWriter(experiment_dir)
 
 # prepare model and restore weights if needed
-from models.ResUnet import ResUNet as Net
-model = Net(in_nc=3, out_nc=3, nb=1, nc=[32,32,32,32], **vars(args)).to(device)
+if args.model == 'ResUnet':
+    from models.ResUnet import ResUNet as Net
+    model = Net(in_nc=3, out_nc=3, nb=1, nc=[32,32,32,32], **vars(args)).to(device)
+else:
+    raise NotImplementedError('Unknown model architecture')
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_decay)
-if starting_epoch != 0: # loading saved weights
-    load_checkpoint(os.path.join(experiment_dir, 'last.pth.tar'), model, optimizer)
+starting_epoch or load_checkpoint(os.path.join(experiment_dir, 'last.pth.tar'), model, optimizer) # loading weights if possible
 
 # multi gpu
 if args.n_gpu >1:
