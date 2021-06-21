@@ -30,8 +30,8 @@ parser.add_argument("--lr", type=float, dest="lr", help="Learning rate", default
 parser.add_argument("--lr_step", type=int, dest="lr_step", help="Learning rate decrease step", default=40000)
 parser.add_argument("--lr_decay", type=float, help="Learning rate decay (on step)", default=0.35)
 parser.add_argument("--num_epochs", type=int, help="Total number of epochs to train", default=250)
-parser.add_argument("--num_iters", type=int, help="Num iters per epoch", default=100)
-parser.add_argument("--test_ev", type=int, help="Test every x epoch", default=10)
+parser.add_argument("--num_iters", type=int, help="Num iters per epoch, (set 0 for one pass) ", default=0)
+parser.add_argument("--test_ev", type=int, help="Test every x epochs", default=10)
 parser.add_argument("--test_only", type=str2bool, help="Only testing", default=False)
 # model parameters
 parser.add_argument("--model", type=str, help="The name of the experiment to be saved.", default='ResUnet')
@@ -87,8 +87,8 @@ if args.n_gpu >1:
 
 # prepare metrics and loss criterion
 loss_fn = L2(boundary_ignore=0)
-metrics_fn = {'l2':L2(), 'Psnr':PSNR()}
-criterion = 'Psnr' # key reference metric for best model saving
+metrics_fn = {'l2':L2(), 'Psnr':PSNR(boundary_ignore=10)}
+criterion = 'Psnr' # key metric for saving best
 
 # ----------------------  perform training ----------------------
 
