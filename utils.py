@@ -16,9 +16,9 @@ def resume_training(ckpt_path, args):
         best_value_criterion = checkpoint['best_value'] #use parameter old experiment
         args = checkpoint['args']
         starting_epoch = checkpoint['epoch']
-        print(f"Checkpoint found\nResuming training @ epoch {starting_epoch}")
+        print(f"\nCheckpoint found\nResuming training @ epoch {starting_epoch}")
     else:
-        print(f'No existing ckpt found')
+        print(f'\nNo existing ckpt found')
         starting_epoch = 0
         best_value_criterion = -1
     return starting_epoch, best_value_criterion, args

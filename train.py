@@ -30,20 +30,20 @@ parser.add_argument("--lr", type=float, dest="lr", help="Learning rate", default
 parser.add_argument("--lr_step", type=int, dest="lr_step", help="Learning rate decrease step", default=40000)
 parser.add_argument("--lr_decay", type=float, help="Learning rate decay (on step)", default=0.35)
 parser.add_argument("--num_epochs", type=int, help="Total number of epochs to train", default=250)
-parser.add_argument("--num_iters", type=int, help="Num iters per epoch", default=4000)
+parser.add_argument("--num_iters", type=int, help="Num iters per epoch", default=100)
 parser.add_argument("--test_ev", type=int, help="Test every x epoch", default=10)
 # misc
 parser.add_argument("--n_gpu", type=int, help="Learning rate decrease step", default=1)
 parser.add_argument("--num_workers", type=int, help="Learning rate decrease step", default=1)
 parser.add_argument("--deterministic", type=str2bool, help="Learning rate decrease step", default=False)
 parser.add_argument("--test_only", type=str2bool, help="Only testing", default=False)
-parser.add_argument("--tqdm", type=str2bool, help="tqdm", default=True)
+parser.add_argument("--tqdm", type=str2bool, help="tqdm", default=False)
 args = parser.parse_args()
 
 # fix rnd seed
 if args.deterministic:
     torch.manual_seed(0); np.random.seed(0); random.seed(0)
-    generator = torch.Generator(); generator.manual_seed(0)  # fixing Dataloaders workers rnd seeds
+    generator = torch.Generator(); generator.manual_seed(0)  # seed dataloaders workers
     torch.use_deterministic_algorithms(True)
 
 # prepare torch device
@@ -69,26 +69,29 @@ if args.tensorboard:
     from torch.utils.tensorboard import SummaryWriter
     writer = SummaryWriter(experiment_dir)
 
-# prepare metrics and loss criterion
-loss_fn = L2(boundary_ignore=0)
-metrics_fn = {'l2':L2(), 'Psnr':PSNR()}
-criterion = 'Psnr' # key reference metric for best model saving
-
 # prepare model and restore weights if needed
 from models.ResUnet import ResUNet as Net
 model = Net(in_nc=3, out_nc=3, nb=1, nc=[32,32,32,32], **vars(args)).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.lr_step, gamma=args.lr_decay)
-if starting_epoch != 0:
+if starting_epoch != 0: # loading saved weights
     load_checkpoint(os.path.join(experiment_dir, 'last.pth.tar'), model, optimizer)
 
 # multi gpu
 if args.n_gpu >1:
     model = torch.nn.DataParallel(model)
 
+# prepare metrics and loss criterion
+loss_fn = L2(boundary_ignore=0)
+metrics_fn = {'l2':L2(), 'Psnr':PSNR()}
+criterion = 'Psnr' # key reference metric for best model saving
+
 # ----------------------  perform training ----------------------
-print(f'Starting training on : {device} \nTrainable params : {num_parameters(model)} \nSaving @ {experiment_dir}')
+
+print(f'Device : {device} \nTrainable params : {num_parameters(model)} \nSaving @ {experiment_dir} '
+      f'\nCriterion best {best_value_criterion:0.3f} \nParameters :')
 pprint.pprint(vars(args))
+
 for epoch in range(starting_epoch, args.num_epochs):
     #init statistics
     is_best = False
@@ -130,7 +133,7 @@ for epoch in range(starting_epoch, args.num_epochs):
         statistics_dict = {key: value / num_iters for (key, value) in statistics_dict.items()}
 
         # console logging
-        epoch_log = f'{phase} {epoch:03d} | {(tac-tic):0.2f}s | {(tac-tic)/num_iters:0.2f}s/iter | lr:{get_lr(optimizer):0.2e}'
+        epoch_log = f'{phase} {epoch:03d} | {(tac-tic):0.2f}s | {(tac-tic)/num_iters:0.2f}s/iter | lr:{get_lr(optimizer):0.2e}' # display basic info
         epoch_log += "".join([f' | {key}:{value:0.3f}' for key,value in statistics_dict.items()]) # display all metrics
         epoch_log += f' | gpu {show_gpu_mem()[1]:0.1f} Mb' if device!=torch.device('cpu') else '' # display gpu usage
         tqdm.write(epoch_log)
@@ -143,15 +146,17 @@ for epoch in range(starting_epoch, args.num_epochs):
                 writer.add_image(f'{name}/{phase}', grid, epoch)
             writer.flush()
 
-        # saving best according to chosen criterion
-        if phase == 'test':
-            if statistics_dict[criterion] > best_value_criterion:
-                best_value_criterion = statistics_dict[criterion] ; is_best = True
+        # saving best model wrt. chosen criterion
+        if phase == 'test' and statistics_dict[criterion] > best_value_criterion:
+            best_value_criterion = statistics_dict[criterion] ; is_best = True
 
-    # saving checkpoints
+    # saving checkpoint
     if not args.test_only:
-        save_checkpoint({'state_dict': model.state_dict(),'optim_dict':optimizer.state_dict(),'epoch': epoch,
-                         'args': args,'best_value': best_value_criterion}, is_best, experiment_dir)
+        save_checkpoint({'state_dict': model.state_dict(),
+                         'optim_dict':optimizer.state_dict(),
+                         'epoch': epoch,
+                         'args': args,
+                         'best_value': best_value_criterion}, is_best, experiment_dir)
 
 if args.tensorboard:
     writer.close()

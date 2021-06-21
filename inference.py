@@ -39,7 +39,6 @@ starting_epoch, best_value_criterion, args = resume_training(ckpt_path=experimen
 # prepare metrics and loss criterion
 loss_fn = L2(boundary_ignore=0)
 metrics_fn = {'l2': L2(), 'Psnr': PSNR()}
-criterion = 'Psnr'  # key of the reference metric for best model saving
 
 # prepare model and restore weights if experiment exists
 from models.ResUnet import ResUNet as Net
@@ -49,7 +48,7 @@ model = Net(in_nc=3, out_nc=3, nb=1, nc=[32, 32, 32, 32], **vars(args)).to(devic
 if args.n_gpu > 1:
     model = torch.nn.DataParallel(model)
 
-load_checkpoint(os.path.join(experiment_dir, 'last.pth.tar'), model, optimizer)
+load_checkpoint(os.path.join(experiment_dir, 'last.pth.tar'), model)
 
 # ----------------------  perform training ----------------------
 print(f'Starting training on : {device} \nTrainable params : {num_parameters(model)} \nSaving @ {experiment_dir}')
@@ -86,10 +85,8 @@ for hr in tqdm(loader, disable=not args.tqdm):
 tac = time.time()
 statistics_dict = {key: value / num_iters for (key, value) in statistics_dict.items()}
 epoch_log = f'{num_iters:03d}'
-epoch_log += "".join(
-    [f' | {key}:{value:0.3f}' for key, value in statistics_dict.items()])  # display all metrics
-epoch_log += f' | gpu {show_gpu_mem()[1]:0.1f} Mb' if device != torch.device(
-    'cpu') else ''  # display gpu usage
+epoch_log += "".join([f' | {key}:{value:0.3f}' for key, value in statistics_dict.items()])  # display all metrics
+epoch_log += f' | gpu {show_gpu_mem()[1]:0.1f} Mb' if device != torch.device('cpu') else ''  # display gpu usage
 tqdm.write(epoch_log)
 
 
